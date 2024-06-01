@@ -1,0 +1,15 @@
+[package]
+name = "rs-aws-sdk-s3-demo"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+tokio-stream = "0.1"
+aws-config = "1"
+aws-sdk-s3 = "1"
+aws-smithy-http = "0.60"
+aws-smithy-types = "1"
+aws-creds = "0.36"
+anyhow = "1.0"
+thiserror = "1"

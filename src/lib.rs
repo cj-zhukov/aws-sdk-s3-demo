@@ -21,8 +21,7 @@ pub async fn get_aws_client(region: &str) -> Client {
         .await;
 
     let config_builder = Builder::from(&sdk_config)
-        .retry_config(RetryConfig::standard()
-        .with_max_attempts(AWS_MAX_RETRIES));
+        .retry_config(RetryConfig::standard().with_max_attempts(AWS_MAX_RETRIES));
 
     let config = config_builder.build();
    

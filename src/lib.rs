@@ -1,10 +1,8 @@
-pub type Result<T> = core::result::Result<T, Error>;
-pub type Error = Box<dyn std::error::Error>;
-
 use std::{collections::HashMap, path::Path};
 
+use anyhow::{Result, anyhow};
 use aws_config::{BehaviorVersion, Region, retry::RetryConfig};
-use aws_sdk_s3::{config::Builder, operation::get_object::GetObjectOutput, primitives::ByteStream, types::{CompletedMultipartUpload, CompletedPart}, Client};
+use aws_sdk_s3::{config::Builder, operation::get_object::{GetObjectError, GetObjectOutput}, primitives::ByteStream, types::{CompletedMultipartUpload, CompletedPart}, Client};
 use aws_smithy_types::byte_stream::Length;
 use tokio::{fs::File, io::{AsyncWriteExt, BufWriter}};
 
@@ -12,6 +10,7 @@ const AWS_MAX_RETRIES: u32 = 10;
 const CHUNK_SIZE: u64 = 10_000_000; // 10 MB
 const MAX_CHUNKS: u64 = 10_000; // 10 GB 
 
+/// Get AWS Client
 pub async fn get_aws_client(region: &str) -> Client {
     let region = Region::new(region.to_string());
 
@@ -28,6 +27,7 @@ pub async fn get_aws_client(region: &str) -> Client {
     Client::from_conf(config)
 }
 
+/// Get AWS GetObjectOutput
 pub async fn get_aws_object(client: Client, bucket: &str, key: &str) -> Result<GetObjectOutput> {
     let req = client
         .get_object()
@@ -38,6 +38,24 @@ pub async fn get_aws_object(client: Client, bucket: &str, key: &str) -> Result<G
 
     Ok(res)
 }
+
+/// Get None if key doesn't exist in AWS S3
+pub async fn try_get_file(client: Client, bucket: &str, key: &str) -> Result<Option<GetObjectOutput>> {
+    let resp = client
+        .get_object()
+        .bucket(bucket)
+        .key(key);
+
+    let res = resp.send().await;
+
+    match res {
+        Ok(res) => Ok(Some(res)),
+        Err(sdk_err) => match sdk_err.into_service_error() {
+            GetObjectError::NoSuchKey(_) => Ok(None),
+            err @ _ => return Err(err.into()),
+        }
+    }
+} 
 
 pub async fn download_file(client: Client, bucket: &str, key: &str, file_path: &str) -> Result<()> {
     let res = get_aws_object(client.clone(), bucket, key).await?;
@@ -88,6 +106,7 @@ pub async fn list_keys(client: Client, bucket: &str, prefix: &str) -> Result<Vec
 	Ok(files)
 }
 
+/// Get files names and size
 pub async fn list_keys_to_map(client: Client, bucket: &str, prefix: &str) -> Result<HashMap<String, i64>> {
 	let mut stream = client
         .list_objects_v2()
@@ -110,6 +129,7 @@ pub async fn list_keys_to_map(client: Client, bucket: &str, prefix: &str) -> Res
 	Ok(files)
 }
 
+/// Upload file by chunks with checking size
 pub async fn upload_object_multipart(client: Client, bucket: &str, file_name: &str, key: &str, file_size: Option<u64>, chunk_size: Option<u64>, max_chunks: Option<u64>) -> Result<()> {
     println!("Uploading file: {}", file_name);
 
@@ -138,12 +158,10 @@ pub async fn upload_object_multipart(client: Client, bucket: &str, file_name: &s
         chunk_count -= 1;
     }
     if file_size == 0 {
-        // return Err(Error::Custom(format!("Bad file size for: {}", file_name)));
-        return Err(format!("Bad file size for: {}", file_name).into());
+        return Err(anyhow!(format!("Bad file size for: {}", file_name)));
     }
     if chunk_count > max_chunks {
-        // return Err(Error::Custom(format!("Too many chunks file: {}. Try increasing your chunk size", file_name)));
-        return Err(format!("Too many chunks file: {}. Try increasing your chunk size", file_name).into());
+        return Err(anyhow!(format!("Too many chunks file: {}. Try increasing your chunk size", file_name)));
     }
 
     let mut upload_parts = Vec::new();
@@ -196,11 +214,8 @@ pub async fn upload_object_multipart(client: Client, bucket: &str, file_name: &s
 
     let data: GetObjectOutput = get_aws_object(client, bucket, key).await?;
     let data_length = data.content_length().unwrap_or(0) as u64;
-    if file_size == data_length {
-        // println!("Data lengths match.");
-    } else {
-        // return Err(Error::Custom("Failed checking data size after upload".into()));
-        return Err("Failed checking data size after upload".into());
+    if file_size != data_length {
+        return Err(anyhow!("Failed checking data size after upload"));
     }
 
     Ok(())

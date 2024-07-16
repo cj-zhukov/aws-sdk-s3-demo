@@ -57,6 +57,17 @@ pub async fn try_get_file(client: Client, bucket: &str, key: &str) -> Result<Opt
     }
 } 
 
+/// Read file from AWS S3 
+pub async fn read_file(client: Client, bucket: &str, key: &str) -> Result<Vec<u8>> {
+    let mut buf = Vec::new();
+    let mut object = get_aws_object(client, bucket, key).await?;
+    while let Some(bytes) = object.body.try_next().await? {
+        buf.extend(bytes.to_vec());
+    }
+
+    Ok(buf)
+}
+
 pub async fn download_file(client: Client, bucket: &str, key: &str, file_path: &str) -> Result<()> {
     let res = get_aws_object(client.clone(), bucket, key).await?;
     

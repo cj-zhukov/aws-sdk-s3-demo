@@ -7,8 +7,8 @@ use aws_smithy_types::byte_stream::Length;
 use tokio::{fs::File, io::{AsyncWriteExt, BufWriter}};
 
 const AWS_MAX_RETRIES: u32 = 10;
-const CHUNK_SIZE: u64 = 10_000_000; // 10 MB
-const MAX_CHUNKS: u64 = 10_000; // 10 GB 
+const CHUNK_SIZE: u64 = 10_000_000; // 10 MiB
+const MAX_CHUNKS: u64 = 10_000; // 10 GiB 
 
 /// Get AWS Client
 pub async fn get_aws_client(region: &str) -> Client {

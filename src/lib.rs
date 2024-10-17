@@ -96,6 +96,7 @@ pub async fn upload_file(client: Client, bucket: &str, file_path: &str, key: &st
 	Ok(())
 }
 
+/// Get files names
 pub async fn list_keys(client: Client, bucket: &str, prefix: &str) -> Result<Vec<String>> {
 	let mut stream = client
         .list_objects_v2()
@@ -107,9 +108,10 @@ pub async fn list_keys(client: Client, bucket: &str, prefix: &str) -> Result<Vec
 	let mut files = Vec::new();
     while let Some(objects) = stream.next().await.transpose()? {        
         for obj in objects.contents() {
-            if !obj.key().unwrap_or("no_file_name").ends_with('/') {
-                let file_name = obj.key().unwrap_or("no_file_name").to_string();
-                files.push(file_name);
+            if let Some(key) = obj.key() {
+                if !key.ends_with('/') {
+                    files.push(key.to_string());
+                }
             }
         }
     }
@@ -129,10 +131,12 @@ pub async fn list_keys_to_map(client: Client, bucket: &str, prefix: &str) -> Res
 	let mut files: HashMap<String, i64> = HashMap::new();
     while let Some(objects) = stream.next().await.transpose()? {
         for obj in objects.contents() {
-            if !obj.key().unwrap_or("no_file_name").ends_with('/') {
-                let file_name = obj.key().unwrap_or("no_file_name").to_string();
-                let file_size = obj.size().unwrap_or(0);
-                files.insert(file_name.to_string(), file_size);
+            if let Some(key) = obj.key() {
+                if !key.ends_with('/') {
+                    let file_name = key.to_string();
+                    let file_size = obj.size().unwrap_or(0);
+                    files.insert(file_name, file_size);
+                }
             }
         }
     }

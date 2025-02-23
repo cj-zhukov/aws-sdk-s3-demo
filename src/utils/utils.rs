@@ -1,13 +1,22 @@
 use std::{collections::HashMap, path::Path};
 
-use color_eyre::eyre::eyre;
-use aws_config::{BehaviorVersion, Region, retry::RetryConfig};
-use aws_sdk_s3::{config::Builder, operation::get_object::{GetObjectError, GetObjectOutput}, primitives::ByteStream, types::{CompletedMultipartUpload, CompletedPart}, Client};
+use aws_config::{retry::RetryConfig, BehaviorVersion, Region};
+use aws_sdk_s3::{
+    config::Builder,
+    operation::get_object::{GetObjectError, GetObjectOutput},
+    primitives::ByteStream,
+    types::{CompletedMultipartUpload, CompletedPart},
+    Client,
+};
 use aws_smithy_types::byte_stream::Length;
-use tokio::{fs::File, io::{AsyncWriteExt, BufWriter}};
+use color_eyre::eyre::eyre;
+use tokio::{
+    fs::File,
+    io::{AsyncWriteExt, BufWriter},
+};
 
-use crate::utils::{AWS_MAX_RETRIES, CHUNK_SIZE, MAX_CHUNKS};
 use crate::error::UtilsError;
+use crate::utils::{AWS_MAX_RETRIES, CHUNK_SIZE, MAX_CHUNKS};
 
 /// Get AWS Client
 pub async fn get_aws_client(region: String) -> Client {
@@ -23,34 +32,32 @@ pub async fn get_aws_client(region: String) -> Client {
 }
 
 /// Get AWS GetObjectOutput
-pub async fn get_aws_object(client: Client, bucket: &str, key: &str) -> Result<GetObjectOutput, UtilsError> {
-    Ok(client
-        .get_object()
-        .bucket(bucket)
-        .key(key)
-        .send()
-        .await?)
+pub async fn get_aws_object(
+    client: Client,
+    bucket: &str,
+    key: &str,
+) -> Result<GetObjectOutput, UtilsError> {
+    Ok(client.get_object().bucket(bucket).key(key).send().await?)
 }
 
 /// Get None if key doesn't exist in AWS S3
-pub async fn try_get_file(client: Client, bucket: &str, key: &str) -> Result<Option<GetObjectOutput>, UtilsError> {
-    let resp = client
-        .get_object()
-        .bucket(bucket)
-        .key(key)
-        .send()
-        .await;
-    
+pub async fn try_get_file(
+    client: Client,
+    bucket: &str,
+    key: &str,
+) -> Result<Option<GetObjectOutput>, UtilsError> {
+    let resp = client.get_object().bucket(bucket).key(key).send().await;
+
     match resp {
         Ok(res) => Ok(Some(res)),
         Err(sdk_err) => match sdk_err.into_service_error() {
             GetObjectError::NoSuchKey(_) => Ok(None),
             err @ _ => Err(UtilsError::UnexpectedError(err.into())),
-        }
+        },
     }
-} 
+}
 
-/// Read file from AWS S3 
+/// Read file from AWS S3
 pub async fn read_file(client: Client, bucket: &str, key: &str) -> Result<Vec<u8>, UtilsError> {
     let mut buf = Vec::new();
     let mut object = get_aws_object(client, bucket, key).await?;
@@ -60,7 +67,12 @@ pub async fn read_file(client: Client, bucket: &str, key: &str) -> Result<Vec<u8
     Ok(buf)
 }
 
-pub async fn download_file(client: Client, bucket: &str, key: &str, file_path: &str) -> Result<(), UtilsError> {
+pub async fn download_file(
+    client: Client,
+    bucket: &str,
+    key: &str,
+    file_path: &str,
+) -> Result<(), UtilsError> {
     let res = get_aws_object(client.clone(), bucket, key).await?;
     let mut data = res.body;
     let file = File::create(&file_path).await?;
@@ -70,31 +82,40 @@ pub async fn download_file(client: Client, bucket: &str, key: &str, file_path: &
     }
     buf_writer.flush().await?;
     Ok(())
-} 
+}
 
-pub async fn upload_file(client: Client, bucket: &str, file_path: &str, key: &str) -> Result<(), UtilsError> {	
-	let body = ByteStream::from_path(file_path).await?;
-	let _resp = client
-		.put_object()
-		.bucket(bucket)
-		.key(key)
-		.body(body)
+pub async fn upload_file(
+    client: Client,
+    bucket: &str,
+    file_path: &str,
+    key: &str,
+) -> Result<(), UtilsError> {
+    let body = ByteStream::from_path(file_path).await?;
+    let _resp = client
+        .put_object()
+        .bucket(bucket)
+        .key(key)
+        .body(body)
         .send()
         .await?;
-	Ok(())
+    Ok(())
 }
 
 /// Get files names
-pub async fn list_keys(client: Client, bucket: &str, prefix: &str) -> Result<Vec<String>, UtilsError> {
-	let mut stream = client
+pub async fn list_keys(
+    client: Client,
+    bucket: &str,
+    prefix: &str,
+) -> Result<Vec<String>, UtilsError> {
+    let mut stream = client
         .list_objects_v2()
         .prefix(prefix)
         .bucket(bucket)
         .into_paginator()
         .send();
-    
-	let mut files = Vec::new();
-    while let Some(objects) = stream.next().await.transpose()? {        
+
+    let mut files = Vec::new();
+    while let Some(objects) = stream.next().await.transpose()? {
         for obj in objects.contents() {
             if let Some(key) = obj.key() {
                 if !key.ends_with('/') {
@@ -103,19 +124,23 @@ pub async fn list_keys(client: Client, bucket: &str, prefix: &str) -> Result<Vec
             }
         }
     }
-	Ok(files)
+    Ok(files)
 }
 
 /// Get files names and size
-pub async fn list_keys_to_map(client: Client, bucket: &str, prefix: &str) -> Result<HashMap<String, i64>, UtilsError> {
-	let mut stream = client
+pub async fn list_keys_to_map(
+    client: Client,
+    bucket: &str,
+    prefix: &str,
+) -> Result<HashMap<String, i64>, UtilsError> {
+    let mut stream = client
         .list_objects_v2()
         .bucket(bucket)
         .prefix(prefix)
         .into_paginator()
         .send();
-    
-	let mut files: HashMap<String, i64> = HashMap::new();
+
+    let mut files: HashMap<String, i64> = HashMap::new();
     while let Some(objects) = stream.next().await.transpose()? {
         for obj in objects.contents() {
             if let Some(key) = obj.key() {
@@ -127,17 +152,17 @@ pub async fn list_keys_to_map(client: Client, bucket: &str, prefix: &str) -> Res
             }
         }
     }
-	Ok(files)
+    Ok(files)
 }
 
 /// Upload file by chunks with checking size
 pub async fn upload_object_multipart(
-    client: Client, 
-    bucket: &str, 
-    file_name: &str, 
-    key: &str, 
-    file_size: Option<u64>, 
-    chunk_size: Option<u64>, 
+    client: Client,
+    bucket: &str,
+    file_name: &str,
+    key: &str,
+    file_size: Option<u64>,
+    chunk_size: Option<u64>,
     max_chunks: Option<u64>,
 ) -> Result<(), UtilsError> {
     println!("Uploading file: {}", file_name);
@@ -153,9 +178,7 @@ pub async fn upload_object_multipart(
     let path = Path::new(&file_name);
     let file_size = match file_size {
         Some(val) => val,
-        None => {
-            File::open(file_name).await?.metadata().await?.len()
-        }
+        None => File::open(file_name).await?.metadata().await?.len(),
     };
     let chunk_size = chunk_size.unwrap_or(CHUNK_SIZE);
     let max_chunks = max_chunks.unwrap_or(MAX_CHUNKS);
@@ -171,7 +194,10 @@ pub async fn upload_object_multipart(
         return Err(UtilsError::UnexpectedError(err.into()));
     }
     if chunk_count > max_chunks {
-        let err = eyre!(format!("Too many chunks file: {}. Try increasing your chunk size", file_name));
+        let err = eyre!(format!(
+            "Too many chunks file: {}. Try increasing your chunk size",
+            file_name
+        ));
         return Err(UtilsError::UnexpectedError(err.into()));
     }
 

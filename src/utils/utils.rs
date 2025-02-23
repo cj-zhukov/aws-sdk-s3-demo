@@ -1,12 +1,9 @@
 use std::{collections::HashMap, path::Path};
 
+use async_stream::stream;
 use aws_config::{retry::RetryConfig, BehaviorVersion, Region};
 use aws_sdk_s3::{
-    config::Builder,
-    operation::get_object::{GetObjectError, GetObjectOutput},
-    primitives::ByteStream,
-    types::{CompletedMultipartUpload, CompletedPart},
-    Client,
+    config::Builder, error::SdkError, operation::{get_object::{GetObjectError, GetObjectOutput}, list_objects_v2::ListObjectsV2Error}, primitives::ByteStream, types::{CompletedMultipartUpload, CompletedPart}, Client
 };
 use aws_smithy_types::byte_stream::Length;
 use color_eyre::eyre::eyre;
@@ -14,6 +11,7 @@ use tokio::{
     fs::File,
     io::{AsyncWriteExt, BufWriter},
 };
+use tokio_stream::Stream;
 
 use crate::error::UtilsError;
 use crate::utils::{AWS_MAX_RETRIES, CHUNK_SIZE, MAX_CHUNKS};
@@ -153,6 +151,53 @@ pub async fn list_keys_to_map(
         }
     }
     Ok(files)
+}
+
+/// List keys using stream
+/// let mut stream = Box::pin(list_keys_stream(client, "bucket", "prefix/").await.take(10));
+pub async fn list_keys_stream<'a>(
+    client: Client,
+    bucket: &'a str,
+    prefix: &'a str,
+) -> impl Stream<Item = Result<String, SdkError<ListObjectsV2Error>>> + use<'a> {
+    stream! {
+        let mut continuation_token = None;
+
+        loop {
+            let mut request = client
+                .list_objects_v2()
+                .bucket(bucket)
+                .prefix(prefix);
+
+            if let Some(token) = continuation_token.take() {
+                request = request.continuation_token(token);
+            }
+
+            let result = request.send().await;
+
+            match result {
+                Ok(response) => {
+                    if let Some(contents) = response.contents {
+                        for object in contents {
+                            if let Some(key) = object.key {
+                                yield Ok(key);
+                            }
+                        }
+                    }
+
+                    if response.next_continuation_token.is_none() {
+                        break;
+                    } else {
+                        continuation_token = response.next_continuation_token;
+                    }
+                }
+                Err(e) => {
+                    yield Err(e);
+                    break;
+                }
+            }
+        }
+    }
 }
 
 /// Upload file by chunks with checking size

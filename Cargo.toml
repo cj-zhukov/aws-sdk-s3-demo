@@ -6,6 +6,8 @@ edition = "2021"
 [dependencies]
 tokio = { version = "1", features = ["full"] }
 tokio-stream = "0.1"
+futures = "0.3"
+async-stream = "0.3"
 aws-config = "1"
 aws-sdk-s3 = "1"
 aws-smithy-http = "0.60"

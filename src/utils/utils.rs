@@ -10,32 +10,26 @@ use crate::utils::{AWS_MAX_RETRIES, CHUNK_SIZE, MAX_CHUNKS};
 use crate::error::UtilsError;
 
 /// Get AWS Client
-pub async fn get_aws_client(region: &str) -> Client {
-    let region = Region::new(region.to_string());
-
+pub async fn get_aws_client(region: String) -> Client {
+    let region = Region::new(region);
     let sdk_config = aws_config::defaults(BehaviorVersion::latest())
         .region(region)
         .load()
         .await;
-
     let config_builder = Builder::from(&sdk_config)
         .retry_config(RetryConfig::standard().with_max_attempts(AWS_MAX_RETRIES));
-
     let config = config_builder.build();
-   
     Client::from_conf(config)
 }
 
 /// Get AWS GetObjectOutput
 pub async fn get_aws_object(client: Client, bucket: &str, key: &str) -> Result<GetObjectOutput, UtilsError> {
-    let req = client
+    Ok(client
         .get_object()
         .bucket(bucket)
-        .key(key);
-
-    let res = req.send().await?;
-
-    Ok(res)
+        .key(key)
+        .send()
+        .await?)
 }
 
 /// Get None if key doesn't exist in AWS S3
@@ -43,11 +37,11 @@ pub async fn try_get_file(client: Client, bucket: &str, key: &str) -> Result<Opt
     let resp = client
         .get_object()
         .bucket(bucket)
-        .key(key);
-
-    let res = resp.send().await;
-
-    match res {
+        .key(key)
+        .send()
+        .await;
+    
+    match resp {
         Ok(res) => Ok(Some(res)),
         Err(sdk_err) => match sdk_err.into_service_error() {
             GetObjectError::NoSuchKey(_) => Ok(None),
@@ -63,13 +57,11 @@ pub async fn read_file(client: Client, bucket: &str, key: &str) -> Result<Vec<u8
     while let Some(bytes) = object.body.try_next().await? {
         buf.extend(bytes.to_vec());
     }
-
     Ok(buf)
 }
 
 pub async fn download_file(client: Client, bucket: &str, key: &str, file_path: &str) -> Result<(), UtilsError> {
     let res = get_aws_object(client.clone(), bucket, key).await?;
-    
     let mut data = res.body;
     let file = File::create(&file_path).await?;
     let mut buf_writer = BufWriter::new(file);
@@ -77,21 +69,18 @@ pub async fn download_file(client: Client, bucket: &str, key: &str, file_path: &
         let _n = buf_writer.write(&bytes).await?;
     }
     buf_writer.flush().await?;
-
     Ok(())
 } 
 
 pub async fn upload_file(client: Client, bucket: &str, file_path: &str, key: &str) -> Result<(), UtilsError> {	
 	let body = ByteStream::from_path(file_path).await?;
-
-	let resp = client
+	let _resp = client
 		.put_object()
 		.bucket(bucket)
 		.key(key)
-		.body(body);
-
-	resp.send().await?;
-
+		.body(body)
+        .send()
+        .await?;
 	Ok(())
 }
 
@@ -114,7 +103,6 @@ pub async fn list_keys(client: Client, bucket: &str, prefix: &str) -> Result<Vec
             }
         }
     }
-
 	Ok(files)
 }
 
@@ -139,7 +127,6 @@ pub async fn list_keys_to_map(client: Client, bucket: &str, prefix: &str) -> Res
             }
         }
     }
-
 	Ok(files)
 }
 
@@ -242,6 +229,5 @@ pub async fn upload_object_multipart(
         let err = eyre!("Failed checking data size after upload");
         return Err(UtilsError::UnexpectedError(err.into()));
     }
-
     Ok(())
 }

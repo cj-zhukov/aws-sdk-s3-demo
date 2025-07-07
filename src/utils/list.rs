@@ -53,7 +53,13 @@ pub async fn list_keys_to_map(
 }
 
 /// List keys using stream
-/// let mut stream = Box::pin(list_keys_stream(client, "bucket", "prefix/").await.take(10));
+/// # Examples
+/// ```
+/// // let mut stream = Box::pin(list_keys_stream(&client, "bucket", "prefix").await.take(5));
+/// // while let Some(res) = stream.next().await.transpose()? {
+/// //    println!("{}", res);
+/// // }
+/// ```
 pub async fn list_keys_stream<'a>(
     client: &'a Client,
     bucket: &'a str,

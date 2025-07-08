@@ -6,10 +6,9 @@ use aws_sdk_s3::types::{CompletedMultipartUpload, CompletedPart};
 use aws_sdk_s3::Client;
 use aws_smithy_types::byte_stream::Length;
 use color_eyre::eyre::eyre;
-use futures::stream::FuturesUnordered;
 use tokio::fs::File;
 use tokio::sync::Semaphore;
-use tokio_stream::StreamExt;
+use tokio::task::JoinSet;
 
 use crate::error::UtilsError;
 use crate::utils::constants::*;
@@ -184,7 +183,7 @@ pub async fn upload_object_multipart_parallel(
     })?;
 
     let semaphore = Arc::new(Semaphore::new(CHUNKS_WORKERS));
-    let mut tasks = FuturesUnordered::new();
+    let mut tasks = JoinSet::new();
 
     for part_index in 0..chunk_count {
         let client = client.clone();
@@ -195,7 +194,7 @@ pub async fn upload_object_multipart_parallel(
         let permit = Arc::clone(&semaphore).acquire_owned().await
             .map_err(|e| UtilsError::UnexpectedError(eyre!("Can't acquire lock: {e}")))?;
 
-        tasks.push(tokio::spawn(async move {
+        tasks.spawn(async move {
             let offset = part_index * chunk_size;
             let this_chunk_size = std::cmp::min(chunk_size, file_len - offset);
             let part_number = (part_index + 1) as i32;
@@ -229,11 +228,11 @@ pub async fn upload_object_multipart_parallel(
                 .e_tag(e_tag)
                 .part_number(part_number)
                 .build()) as Result<_, UtilsError>
-        }));
+        });
     }
 
     let mut completed_parts = Vec::with_capacity(chunk_count as usize);
-    while let Some(result) = tasks.next().await {
+    while let Some(result) = tasks.join_next().await {
         let res: CompletedPart = result
             .map_err(|e| UtilsError::UnexpectedError(eyre!(e)))?
             .map_err(|e| UtilsError::UnexpectedError(eyre!(e)))?;
@@ -312,7 +311,7 @@ pub async fn upload_object_multipart_parallel_retry(
     })?;
 
     let semaphore = Arc::new(Semaphore::new(CHUNKS_WORKERS));
-    let mut tasks = FuturesUnordered::new();
+    let mut tasks = JoinSet::new();
 
     for part_index in 0..chunk_count {
         let client = client.clone();
@@ -323,7 +322,7 @@ pub async fn upload_object_multipart_parallel_retry(
         let permit = Arc::clone(&semaphore).acquire_owned().await
             .map_err(|e| UtilsError::UnexpectedError(eyre!("Can't acquire semaphore: {e}")))?;
 
-        tasks.push(tokio::spawn(async move {
+        tasks.spawn(async move {
             let _permit = permit;
             let offset = part_index * chunk_size;
             let this_chunk_size = std::cmp::min(chunk_size, file_len - offset);
@@ -382,11 +381,11 @@ pub async fn upload_object_multipart_parallel_retry(
             Err(last_err.unwrap_or_else(|| {
                 UtilsError::UnexpectedError(eyre!("Part {part_number} failed with unknown error"))
             }))
-        }));
+        });
     }
 
     let mut completed_parts = Vec::with_capacity(chunk_count as usize);
-    while let Some(result) = tasks.next().await {
+    while let Some(result) = tasks.join_next().await {
         let res: CompletedPart = result
             .map_err(|e| UtilsError::UnexpectedError(eyre!(e)))?
             .map_err(|e| UtilsError::UnexpectedError(eyre!(e)))?;

@@ -57,7 +57,7 @@ pub async fn upload_object_multipart(
 
     let chunk_size = chunk_size.unwrap_or(CHUNK_SIZE);
     let max_chunks = max_chunks.unwrap_or(MAX_CHUNKS);
-    let chunk_count = (file_len + chunk_size - 1) / chunk_size;
+    let chunk_count = file_len.div_ceil(chunk_size); // (file_len + chunk_size - 1) / chunk_size;
     if chunk_count > max_chunks {
         return Err(UtilsError::UnexpectedError(eyre!(
             "Too many chunks for {}: {}. Increase chunk size or max_chunks.",
@@ -163,7 +163,7 @@ pub async fn upload_object_multipart_parallel(
 
     let chunk_size = chunk_size.unwrap_or(CHUNK_SIZE);
     let max_chunks = max_chunks.unwrap_or(MAX_CHUNKS);
-    let chunk_count = (file_len + chunk_size - 1) / chunk_size;
+    let chunk_count = file_len.div_ceil(chunk_size);
     if chunk_count > max_chunks {
         return Err(UtilsError::UnexpectedError(eyre!(
             "Too many chunks for {}: {}. Increase chunk size or max_chunks.",
@@ -290,7 +290,7 @@ pub async fn upload_object_multipart_parallel_retry(
 
     let chunk_size = chunk_size.unwrap_or(CHUNK_SIZE);
     let max_chunks = max_chunks.unwrap_or(MAX_CHUNKS);
-    let chunk_count = (file_len + chunk_size - 1) / chunk_size;
+    let chunk_count = file_len.div_ceil(chunk_size);
     if chunk_count > max_chunks {
         return Err(UtilsError::UnexpectedError(eyre!(
             "Too many chunks for {}: {}. Increase chunk size or max_chunks.",

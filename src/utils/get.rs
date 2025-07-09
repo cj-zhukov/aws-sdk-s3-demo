@@ -42,7 +42,7 @@ pub async fn try_get_file(
         Ok(res) => Ok(Some(res)),
         Err(sdk_err) => match sdk_err.into_service_error() {
             GetObjectError::NoSuchKey(_) => Ok(None),
-            err @ _ => Err(UtilsError::UnexpectedError(err.into())),
+            err => Err(UtilsError::UnexpectedError(err.into())),
         },
     }
 }

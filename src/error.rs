@@ -10,6 +10,7 @@ use aws_sdk_s3::operation::upload_part::UploadPartError;
 use aws_smithy_types::byte_stream::error::Error as AWSSmithyError;
 use color_eyre::eyre::Report;
 use thiserror::Error;
+use url::ParseError;
 
 #[derive(Debug, Error)]
 pub enum UtilsError {
@@ -36,6 +37,9 @@ pub enum UtilsError {
 
     #[error("AWSSmithy error")]
     AWSSmithyError(#[from] AWSSmithyError),
+
+    #[error("UrlParseError error")]
+    UrlParseError(#[from] ParseError),
 
     #[error("Unexpected error")]
     UnexpectedError(#[source] Report),

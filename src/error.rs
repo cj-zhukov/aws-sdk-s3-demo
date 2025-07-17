@@ -41,6 +41,9 @@ pub enum UtilsError {
     #[error("UrlParseError error")]
     UrlParseError(#[from] ParseError),
 
+    #[error("InvalidS3Uri error")]
+    InvalidS3Uri,
+
     #[error("Unexpected error")]
     UnexpectedError(#[source] Report),
 }
